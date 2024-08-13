@@ -208,6 +208,15 @@ public static class Program
 
 			}
 			*/
+
+			/*
+			 * R := set of all requests
+			   r ⊂ R
+			   P(r)
+			   ∀r, P(r) 
+			 * 
+			 */
+
 			if (await cm.MonitorCollectionAsync(cm.Predicate, TimeSpan.FromSeconds(5))) {
 				Console.WriteLine("subset match");
 
