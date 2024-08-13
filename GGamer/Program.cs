@@ -11,6 +11,144 @@ namespace GGamer;
 public static class Program
 {
 
+	private static UndetectedChromeDriver _driver;
+
+	private const string URL1 = "https://www.chatgpt.com";
+
+	private const string COOKIES_TXT = @"C:\Users\Deci\Downloads\chatgpt.com_cookies.txt";
+
+
+	public static async Task Main(string[] args)
+	{
+		var co = new ChromeOptions()
+			{ };
+		co.AddArguments("--no-sandbox", "--disable-setuid-sandbox");
+
+		_driver = UndetectedChromeDriver.Create(co, driverExecutablePath:
+		                                        await new ChromeDriverInstaller().Auto());
+
+		await _driver.Navigate().GoToUrlAsync(URL1);
+
+		foreach (var c in ParseCookies(COOKIES_TXT)) {
+			// Debug.WriteLine(c);
+
+			try {
+				_driver.Manage().Cookies.AddCookie(c);
+
+			}
+			catch (Exception e) {
+				Console.Error.WriteLine(e.Message);
+			}
+		}
+
+		await _driver.Navigate().GoToUrlAsync(URL1);
+
+		var cts = new CancellationTokenSource();
+
+		var wdw = new WebDriverWait(_driver, TimeSpan.FromSeconds(6));
+		var em  = wdw.Until(x => x.FindElement(By.Id("prompt-textarea")), cts.Token);
+
+		em.SendKeys("How do I play game\n");
+
+		var wdw2 = new WebDriverWait(_driver, TimeSpan.FromSeconds(6))
+		{
+			PollingInterval = TimeSpan.FromMilliseconds(500)
+		};
+		wdw2.IgnoreExceptionTypes([typeof(ElementNotInteractableException)]);
+
+		var hs = new HashSet<IWebElement>();
+
+		while (!cts.IsCancellationRequested) {
+			/*var comp = await _driver.WaitForRequest("r", TimeSpan.FromSeconds(1));
+
+			if (comp) {
+				var msgs = wdw2.Until(x =>
+				{
+					return x.FindElements(By.XPath("//*[contains(@data-testid,'conversation-turn')]"));
+				}, cts.Token);
+
+				foreach (IWebElement msg in msgs) {
+
+					if (msg.TryGetText(out string s) && hs.Add(s)) {
+
+						Console.WriteLine(s);
+
+					}
+
+				}
+
+			}*/
+
+			var msgs = wdw2.Until(x =>
+			{
+				return x.FindElements(By.XPath("//*[contains(@data-testid,'conversation-turn')]"));
+			}, cts.Token);
+
+			foreach (IWebElement msg in msgs) {
+				/*var r=wdw2.WaitForElementToStopChanging(msg, TimeSpan.FromSeconds(3));
+
+				if (r) {
+					Console.WriteLine($"{msg.Text}");
+				}*/
+
+				/*if (msg.TryGetText(out var s)) {
+					Console.WriteLine(s);
+				}*/
+
+				try {
+					if (hs.Add(msg)) {
+						Console.WriteLine(msg.Text);
+					}
+				}
+				catch (Exception e) {
+					// Console.WriteLine(e);
+					// throw;
+				}
+			}
+
+			await Task.Delay(TimeSpan.FromSeconds(1));
+			/*
+			foreach (var msg in msgs) {
+				if (!msg.IsStale() && !hs.Contains(msg)) {
+					hs.Add(msg);
+					Console.WriteLine(msg.Text);
+				}
+
+			}
+			*/
+
+
+			// wdw2.WaitForElementToStopChanging(By.XPath("//*[contains(@data-testid,'conversation-turn')]"), TimeSpan.FromSeconds(2));
+
+
+			// await Task.Delay(TimeSpan.FromSeconds(1));
+		}
+
+		/*Console.CancelKeyPress += (sender, eventArgs) =>
+		{
+			Console.WriteLine($"{sender} -> {eventArgs}");
+			cts.Cancel();
+			_driver.Quit();
+			Kill();
+		};*/
+
+		// await Task.Delay(TimeSpan.FromMinutes(6));
+
+		_driver.Quit();
+
+	}
+
+	private static void Kill()
+	{
+		var proc = Process.GetProcessesByName("chrome.exe");
+
+
+		foreach (Process process in proc) {
+			process.Kill();
+			Console.WriteLine($"Killed {process.Id}");
+		}
+	}
+
 	private static bool IsStale(this IWebElement e)
 	{
 		try {
@@ -64,91 +202,55 @@ public static class Program
 		System.Threading.Thread.Sleep(stableDuration);
 	}
 
-
-	private const string URL1 = "https://www.chatgpt.com";
-
-	private const string COOKIES_TXT = @"C:\Users\Deci\Downloads\cookies.txt";
-
-	public static async Task Main(string[] args)
+	public static bool WaitForElementToStopChanging(this WebDriverWait wait, IWebElement element,
+	                                                TimeSpan stableDuration)
 	{
-		var co = new ChromeOptions()
-			{ };
-		co.AddArguments("--no-sandbox", "--disable-setuid-sandbox");
-
-		var driver = UndetectedChromeDriver.Create(co, driverExecutablePath:
-		                                           await new ChromeDriverInstaller().Auto());
-
-		await driver.Navigate().GoToUrlAsync(URL1);
-
-		foreach (var c in ParseCookies(COOKIES_TXT)) {
-			// Debug.WriteLine(c);
-
-			try {
-				driver.Manage().Cookies.AddCookie(c);
-
-			}
-			catch (Exception e) {
-				Console.Error.WriteLine(e.Message);
-			}
-		}
-
-		await driver.Navigate().GoToUrlAsync(URL1);
-
-		var cts = new CancellationTokenSource();
-
-		var wdw = new WebDriverWait(driver, TimeSpan.FromSeconds(6));
-		var em  = wdw.Until(x => x.FindElement(By.Id("prompt-textarea")), cts.Token);
-
-		em.SendKeys("How do I play game\n");
-
-		var wdw2 = new WebDriverWait(driver, TimeSpan.FromSeconds(6))
+		var res = wait.Until(driver =>
 		{
-			PollingInterval = TimeSpan.FromMilliseconds(500)
-		};
-		wdw2.IgnoreExceptionTypes([typeof(ElementNotInteractableException)]);
+			// var element          = driver.FindElement(locator);
+			var initialText      = element.Text;
+			var initialAttribute = element.GetAttribute("value");
 
-		var hs = new HashSet<string>();
-
-		while (!cts.IsCancellationRequested) {
-			var msgs = wdw2.Until(x =>
+			return wait.Until(d =>
 			{
-				return x.FindElements(By.XPath("//*[contains(@data-testid,'conversation-turn')]"));
-			}, cts.Token);
+				var currentText      = element.Text;
+				var currentAttribute = element.GetAttribute("value");
 
-			/*
-			foreach (var msg in msgs) {
-				if (!msg.IsStale() && !hs.Contains(msg)) {
-					hs.Add(msg);
-					Console.WriteLine(msg.Text);
-				}
+				return initialText == currentText && initialAttribute == currentAttribute;
+			});
+		});
 
-			}
-			*/
+		// Wait for the stable duration to ensure the element has stopped changing
+		// System.Threading.Thread.Sleep(stableDuration);
 
-			wdw2.WaitForElementToStopChanging(By.XPath("//*[contains(@data-testid,'conversation-turn')]"), TimeSpan.FromSeconds(2));
+		return res;
+	}
 
-			foreach (IWebElement msg in msgs) {
-				if (msg.TryGetText(out string s) && hs.Add(s)) {
+	public static async Task<bool> WaitForRequest(this ChromeDriver _chromeDriver, string urlPattern, TimeSpan timeout)
+	{
+		var devToolsSession  = _chromeDriver.GetDevToolsSession();
+		var network          = new OpenQA.Selenium.DevTools.V85.Network.NetworkAdapter(devToolsSession);
+		var requestCompleted = new TaskCompletionSource<bool>();
 
-					Console.WriteLine(s);
-
-				}
-			}
-
-			// await Task.Delay(TimeSpan.FromSeconds(1));
-		}
-
-		Console.CancelKeyPress += (sender, eventArgs) =>
+		network.RequestWillBeSent += (sender, e) =>
 		{
-			Console.WriteLine($"{sender} -> {eventArgs}");
-
-			cts.Cancel();
-
+			if (e.Request.Url.Contains(urlPattern)) {
+				requestCompleted.SetResult(true);
+			}
 		};
 
-		// await Task.Delay(TimeSpan.FromMinutes(6));
+		await network.Enable(new OpenQA.Selenium.DevTools.V85.Network.EnableCommandSettings());
 
-		driver.Quit();
+		var task = await Task.WhenAny(requestCompleted.Task, Task.Delay(timeout));
+
+		if (task == requestCompleted.Task) {
+			// Console.WriteLine("Request completed.");
+			return true;
+		}
+		else {
+			// throw new TimeoutException("Request did not complete within the specified timeout.");
+			return false;
+		}
 	}
 
 	public static List<Cookie> ParseCookies(string filePath)
